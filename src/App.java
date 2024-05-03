@@ -8,10 +8,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
+import java.net.*;
 
 // import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -31,6 +28,7 @@ import javax.swing.WindowConstants;
 // import java.awt.Color;
 import java.awt.Component;
 import java.sql.*;
+import java.util.Enumeration;
 
 /**
  * methods
@@ -170,7 +168,7 @@ class databaseConnection {
             Class.forName("com.mysql.jdbc.Driver");
 
             // Create connection
-            Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/fts", "root", "root");
+            Connection con = DriverManager.getConnection("jdbc:mysql://0.0.0.0:3306/fts", "root", "root");
             String query = "INSERT INTO receivedfiledata(filename, date_time) VALUES(?, now())";
             PreparedStatement stmt = con.prepareStatement(query);
             stmt.setString(1, receiverFileName);
@@ -364,38 +362,38 @@ class sendReceive extends swingComponent implements sendReceiveInterface {
                         String IP = JOptionPane.showInputDialog(sendFileFrame, "Enter IP address");
                         if (IP != null) {
 
-                            // Connect with server
-                            Socket socket = new Socket(IP, 4444);
+                            try (// Connect with server
+                            Socket socket = new Socket(IP, 4444)) {
+                                try (// FileInputStream obtain input bytes from a file
+                                FileInputStream fileInputStream = new FileInputStream(file[0].getAbsolutePath())) {
+                                    // DataOutputStream allows application to write primitive data in a
+                                    // machine-independent way
+                                    DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
-                            // FileInputStream obtain input bytes from a file
-                            FileInputStream fileInputStream = new FileInputStream(file[0].getAbsolutePath());
+                                    // It gives file name in string
+                                    String fileName = file[0].getName();
 
-                            // DataOutputStream allows application to write primitive data in a
-                            // machine-independent way
-                            DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
+                                    // Encode file into sequence of byte
+                                    byte[] fileNameByte = fileName.getBytes();
 
-                            // It gives file name in string
-                            String fileName = file[0].getName();
+                                    // Creating byte array of same length as file
+                                    byte[] fileContentByte = new byte[(int) file[0].length()];
 
-                            // Encode file into sequence of byte
-                            byte[] fileNameByte = fileName.getBytes();
+                                    // It read byte of data of a file
+                                    fileInputStream.read(fileContentByte);
 
-                            // Creating byte array of same length as file
-                            byte[] fileContentByte = new byte[(int) file[0].length()];
+                                    // Write an int to the output stream
+                                    outputStream.writeInt(fileNameByte.length);
 
-                            // It read byte of data of a file
-                            fileInputStream.read(fileContentByte);
+                                    // It write bytes
+                                    outputStream.write(fileNameByte);
 
-                            // Write an int to the output stream
-                            outputStream.writeInt(fileNameByte.length);
-
-                            // It write bytes
-                            outputStream.write(fileNameByte);
-
-                            outputStream.writeInt(fileContentByte.length);
-                            outputStream.write(fileContentByte);
-                            databaseConnection dc = new databaseConnection();
-                            dc.setFileName(fileName);
+                                    outputStream.writeInt(fileContentByte.length);
+                                    outputStream.write(fileContentByte);
+                                    databaseConnection dc = new databaseConnection();
+                                    dc.setFileName(fileName);
+                                }
+                            }
                         } else {
                             try {
                                 throw new myExceptions();
@@ -431,10 +429,23 @@ class sendReceive extends swingComponent implements sendReceiveInterface {
 
         try {
             // Getting IP of user
-            InetAddress localhost = InetAddress.getLocalHost();
-            iPAddressLabel.setText("Your IP Address : " + (localhost.getHostAddress()).trim());
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                if (iface.isLoopback() || !iface.isUp()) {
+                    continue; // Skip loopback and inactive interfaces
+                }
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof Inet4Address) {
+                        iPAddressLabel.setText("Network IP Address: " + addr.getHostAddress());
+                    }
+                }
+            }
+//         e.printStackTrace();
+        } catch (SocketException e) {
+            throw new RuntimeException(e);
         }
 
         receiveFileFrame.setBounds(750, 300, 400, 200);
@@ -728,3 +739,5 @@ class App {
 
     }
 }
+
+// 
